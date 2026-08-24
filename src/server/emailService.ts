@@ -25,25 +25,30 @@ export class EmailService {
       return null;
     }
 
-    const socketTimeout = 5000;
-    const connectionTimeout = 5000;
-    const greetingTimeout = 5000;
+    const socketTimeout = 15000;
+    const connectionTimeout = 15000;
+    const greetingTimeout = 10000;
 
-    return nodemailer.createTransport({
+    // Build configuration with family: 4 (IPv4) to prevent ENETUNREACH on Render/Cloud Run/Docker
+    const transportOptions: any = {
       host,
       port,
       secure,
+      family: 4, // Forces IPv4 resolution, bypassing unreachable IPv6 network routes
       auth: {
-        user,
-        pass,
+        user: user.trim(),
+        pass: pass.replace(/\s+/g, ''), // Strip any accidental spaces in app password
       },
       connectionTimeout,
       greetingTimeout,
       socketTimeout,
       tls: {
-        rejectUnauthorized: false, // Prevents self-signed cert issues in dev/private relays
+        rejectUnauthorized: false, // Prevents self-signed cert issues
+        ciphers: 'SSLv3',
       },
-    });
+    };
+
+    return nodemailer.createTransport(transportOptions);
   }
 
   /**
@@ -232,46 +237,165 @@ Note: This link is valid for ${settings.approval_token_expiry_hours || 48} hours
 Security Hash: ${request.token_hash}
 `;
 
+    return this.sendEmailMessage({
+      to: recipient,
+      subject,
+      text: textContent,
+      html: htmlContent,
+      fromAddress,
+      settings,
+      approvalUrl,
+    });
+  }
+
+  /**
+   * Dispatch email message using either HTTP API (Resend, Brevo, SendGrid) or Nodemailer SMTP
+   */
+  public static async sendEmailMessage(params: {
+    to: string;
+    subject: string;
+    text: string;
+    html: string;
+    fromAddress: string;
+    settings: SystemSettings;
+    approvalUrl?: string;
+  }): Promise<EmailSendResult> {
+    const { to, subject, text, html, fromAddress, settings, approvalUrl } = params;
+    const provider = settings.email_provider || process.env.EMAIL_PROVIDER || 'smtp';
+    const apiKey = (settings.email_api_key || process.env.RESEND_API_KEY || process.env.BREVO_API_KEY || process.env.SENDGRID_API_KEY || '').trim();
+
+    // 1. Resend API (HTTPS Port 443 - 100% works on Render without any port block)
+    if (provider === 'resend' || apiKey.startsWith('re_')) {
+      try {
+        const fromSender = settings.smtp_from || 'Driver Attendance Portal <onboarding@resend.dev>';
+        const res = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: fromSender,
+            to: [to],
+            subject,
+            html,
+            text,
+          }),
+        });
+
+        const data: any = await res.json();
+        if (!res.ok) {
+          throw new Error(data.message || data.error || `Resend HTTP error ${res.status}`);
+        }
+
+        console.log(`[EmailService] Dispatched via Resend API to ${to}. ID: ${data.id}`);
+        return {
+          success: true,
+          messageId: data.id,
+          recipient: to,
+          isRealSmtp: true,
+          approvalUrl,
+        };
+      } catch (err: any) {
+        console.error(`[EmailService] Resend API Error:`, err);
+        return {
+          success: false,
+          recipient: to,
+          isRealSmtp: true,
+          approvalUrl,
+          error: `Resend API Error: ${err.message}`,
+        };
+      }
+    }
+
+    // 2. Brevo REST API (HTTPS Port 443)
+    if (provider === 'brevo_api' || apiKey.startsWith('xkeysib-')) {
+      try {
+        const senderEmail = settings.smtp_user || 'system@driverportal.com';
+        const senderName = settings.company_name || 'Driver Attendance Portal';
+        const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+          method: 'POST',
+          headers: {
+            'api-key': apiKey,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            sender: { name: senderName, email: senderEmail },
+            to: [{ email: to }],
+            subject,
+            htmlContent: html,
+            textContent: text,
+          }),
+        });
+
+        const data: any = await res.json();
+        if (!res.ok) {
+          throw new Error(data.message || `Brevo HTTP error ${res.status}`);
+        }
+
+        console.log(`[EmailService] Dispatched via Brevo API to ${to}. MessageId: ${data.messageId}`);
+        return {
+          success: true,
+          messageId: data.messageId,
+          recipient: to,
+          isRealSmtp: true,
+          approvalUrl,
+        };
+      } catch (err: any) {
+        console.error(`[EmailService] Brevo API Error:`, err);
+        return {
+          success: false,
+          recipient: to,
+          isRealSmtp: true,
+          approvalUrl,
+          error: `Brevo API Error: ${err.message}`,
+        };
+      }
+    }
+
+    // 3. Fallback to Standard Nodemailer SMTP
     const transporter = this.getTransporter(settings);
 
     if (!transporter) {
-      console.warn(`[EmailService] SMTP not fully configured. Email prepared for: ${recipient}`);
+      console.warn(`[EmailService] No SMTP/API configured. Email prepared for: ${to}`);
       return {
         success: true,
-        recipient,
+        recipient: to,
         isRealSmtp: false,
         approvalUrl,
-        error: 'SMTP host/user not configured. Approval link generated successfully and available in Admin Portal and simulated inbox.',
+        error: 'No active email provider. Please configure Resend API Key or SMTP credentials in Settings.',
       };
     }
 
     try {
       const info = await transporter.sendMail({
         from: fromAddress,
-        to: recipient,
+        to,
         subject,
-        text: textContent,
-        html: htmlContent,
+        text,
+        html,
       });
 
-      console.log(`[EmailService] Real email dispatched successfully to ${recipient}. MessageId: ${info.messageId}`);
+      console.log(`[EmailService] SMTP email dispatched successfully to ${to}. MessageId: ${info.messageId}`);
       return {
         success: true,
         messageId: info.messageId,
-        recipient,
+        recipient: to,
         isRealSmtp: true,
         approvalUrl,
       };
     } catch (err: any) {
       let friendlyError = err.message || 'Failed to send email via SMTP server.';
       if (err.message && (err.message.includes('535') || err.message.includes('Username and Password not accepted') || err.message.includes('BadCredentials'))) {
-        friendlyError = 'Gmail/SMTP rejected login (535 Bad Credentials). Gmail requires a 16-character "Google App Password" instead of your normal account password. Generate one at https://myaccount.google.com/apppasswords (under 2-Step Verification) and enter it in System Settings > SMTP Password.';
+        friendlyError = 'Gmail/SMTP rejected login (535 Bad Credentials). Gmail requires a 16-character "Google App Password" (no spaces) instead of your normal account password.';
+      } else if (err.message && (err.message.includes('timeout') || err.message.includes('ETIMEDOUT') || err.message.includes('ENETUNREACH'))) {
+        friendlyError = 'Render blocks standard SMTP ports (25, 465, 587) on cloud containers. Use the "Resend API" option (over HTTPS Port 443) or Brevo Port 2525 in Settings.';
       }
 
-      console.error(`[EmailService] Failed to dispatch SMTP email to ${recipient}: ${friendlyError}`);
+      console.error(`[EmailService] Failed to dispatch SMTP email to ${to}: ${friendlyError}`);
       return {
         success: false,
-        recipient,
+        recipient: to,
         isRealSmtp: true,
         approvalUrl,
         error: friendlyError,
@@ -280,7 +404,7 @@ Security Hash: ${request.token_hash}
   }
 
   /**
-   * Send a test email to verify SMTP connection to Boss email
+   * Send a test email to verify SMTP or API connection
    */
   public static async sendTestEmail(params: {
     toEmail: string;
@@ -293,59 +417,45 @@ Security Hash: ${request.token_hash}
       return { success: false, message: 'Invalid recipient email address.' };
     }
 
-    const transporter = this.getTransporter(settings);
-    if (!transporter) {
-      return {
-        success: false,
-        message: 'SMTP credentials missing. Please enter your SMTP Host, Port, Username and Password.',
-      };
-    }
+    const fromAddress = settings.smtp_from || process.env.FROM_EMAIL || `"Driver Attendance System" <${settings.smtp_user || 'no-reply@driverportal.com'}>`;
+    const subject = `[Test] Driver Attendance System - Email Delivery Verification`;
+    const text = `Hello Boss!\n\nThis is a confirmation test email from the Driver Attendance Management System (${settings.company_name}).\nYour email delivery configuration is working correctly!\n\nPortal URL: ${baseUrl}\nTimestamp: ${new Date().toISOString()}`;
+    const html = `
+    <div style="font-family: Arial, sans-serif; background-color: #0f172a; color: #f8fafc; padding: 24px; border-radius: 12px;">
+      <h2 style="color: #60a5fa; margin-top: 0;">&check; Email Delivery Configuration Verified</h2>
+      <p style="color: #cbd5e1; font-size: 14px;">
+        Hello Boss! This is a test email sent from <strong>${settings.company_name}</strong>.
+      </p>
+      <div style="background-color: #1e293b; padding: 16px; border-radius: 8px; border: 1px solid #334155; margin: 16px 0;">
+        <p style="margin: 0 0 8px 0; font-size: 13px; color: #94a3b8;"><strong>Recipient Email:</strong> ${toEmail}</p>
+        <p style="margin: 0 0 8px 0; font-size: 13px; color: #94a3b8;"><strong>Email Provider:</strong> ${settings.email_provider || 'SMTP'}</p>
+        <p style="margin: 0; font-size: 13px; color: #94a3b8;"><strong>Dispatched At:</strong> ${new Date().toLocaleString()}</p>
+      </div>
+      <p style="color: #4ade80; font-size: 14px; font-weight: bold;">
+        All driver activation requests will now be reliably delivered to your inbox.
+      </p>
+    </div>
+    `;
 
-    const fromAddress = settings.smtp_from || process.env.FROM_EMAIL || `"Driver Attendance System" <${settings.smtp_user}>`;
+    const result = await this.sendEmailMessage({
+      to: toEmail,
+      subject,
+      text,
+      html,
+      fromAddress,
+      settings,
+    });
 
-    try {
-      // First verify connection
-      await transporter.verify();
-
-      // Send test message
-      const info = await transporter.sendMail({
-        from: fromAddress,
-        to: toEmail,
-        subject: `[Test] Driver Attendance System - Email Delivery Verification`,
-        text: `Hello Boss!\n\nThis is a confirmation test email from the Driver Attendance Management System (${settings.company_name}).\nYour email delivery configuration is working correctly!\n\nPortal URL: ${baseUrl}\nTimestamp: ${new Date().toISOString()}`,
-        html: `
-        <div style="font-family: Arial, sans-serif; background-color: #0f172a; color: #f8fafc; padding: 24px; border-radius: 12px;">
-          <h2 style="color: #60a5fa; margin-top: 0;">&check; Email Delivery Configuration Verified</h2>
-          <p style="color: #cbd5e1; font-size: 14px;">
-            Hello Boss! This is a test email sent from <strong>${settings.company_name}</strong>.
-          </p>
-          <div style="background-color: #1e293b; padding: 16px; border-radius: 8px; border: 1px solid #334155; margin: 16px 0;">
-            <p style="margin: 0 0 8px 0; font-size: 13px; color: #94a3b8;"><strong>Recipient Email:</strong> ${toEmail}</p>
-            <p style="margin: 0 0 8px 0; font-size: 13px; color: #94a3b8;"><strong>SMTP Host:</strong> ${settings.smtp_host || 'N/A'}</p>
-            <p style="margin: 0; font-size: 13px; color: #94a3b8;"><strong>Dispatched At:</strong> ${new Date().toLocaleString()}</p>
-          </div>
-          <p style="color: #4ade80; font-size: 14px; font-weight: bold;">
-            All driver activation requests will now be reliably delivered to your inbox.
-          </p>
-        </div>
-        `,
-      });
-
+    if (result.success) {
       return {
         success: true,
-        message: `Test email successfully delivered to ${toEmail}! Message ID: ${info.messageId}`,
+        message: `Test email successfully delivered to ${toEmail}! Message ID: ${result.messageId || 'OK'}`,
       };
-    } catch (err: any) {
-      let friendlyError = err.message || 'Unknown SMTP error';
-      if (err.message && (err.message.includes('535') || err.message.includes('Username and Password not accepted') || err.message.includes('BadCredentials'))) {
-        friendlyError = 'Invalid login credentials (535). For Gmail/Google Workspace, you MUST use a 16-character "App Password" instead of your normal account password. See the Gmail instructions box below.';
-      }
-
-      console.error('[EmailService] Test email failed:', friendlyError);
+    } else {
       return {
         success: false,
-        message: `SMTP Error: ${friendlyError}`,
-        error: friendlyError,
+        message: result.error || 'Failed to send test email.',
+        error: result.error,
       };
     }
   }

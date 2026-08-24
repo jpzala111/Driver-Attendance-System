@@ -16,6 +16,7 @@ import {
   Eye,
   EyeOff,
   HelpCircle,
+  Key,
 } from 'lucide-react';
 
 export const AdminSettings: React.FC = () => {
@@ -72,19 +73,54 @@ export const AdminSettings: React.FC = () => {
     }
   };
 
-  const handlePresetSelect = (preset: 'gmail' | 'outlook' | 'sendgrid' | 'brevo' | 'custom') => {
-    if (preset === 'gmail') {
+  const handlePresetSelect = (preset: 'resend' | 'brevo-port2525' | 'brevo-api' | 'gmail-ssl' | 'gmail' | 'outlook' | 'sendgrid') => {
+    if (preset === 'resend') {
       setSettings((prev) => ({
         ...prev,
+        email_provider: 'resend',
+        smtp_from: prev.smtp_from || 'Driver Attendance Portal <onboarding@resend.dev>',
+      }));
+      showToast('info', 'Resend API Selected (Recommended for Render)', 'Uses HTTPS Port 443 so Render never blocks it. Get your free API key at resend.com.');
+    } else if (preset === 'brevo-port2525') {
+      setSettings((prev) => ({
+        ...prev,
+        email_provider: 'smtp',
+        smtp_host: 'smtp-relay.brevo.com',
+        smtp_port: 2525,
+        smtp_secure: false,
+        smtp_from: prev.smtp_from || `"Driver Portal" <${prev.smtp_user || 'your-email@domain.com'}>`,
+      }));
+      showToast('info', 'Brevo Port 2525 Applied', 'Port 2525 is NOT blocked by Render!');
+    } else if (preset === 'brevo-api') {
+      setSettings((prev) => ({
+        ...prev,
+        email_provider: 'brevo_api',
+      }));
+      showToast('info', 'Brevo REST API Selected', 'Sends over HTTPS Port 443 without port restrictions.');
+    } else if (preset === 'gmail-ssl') {
+      setSettings((prev) => ({
+        ...prev,
+        email_provider: 'smtp',
+        smtp_host: 'smtp.gmail.com',
+        smtp_port: 465,
+        smtp_secure: true,
+        smtp_from: prev.smtp_from || `"Driver Portal" <${prev.smtp_user || 'your-email@gmail.com'}>`,
+      }));
+      showToast('info', 'Gmail SSL Preset Applied', 'Configured for Gmail Direct SSL (Port 465). Note: Render blocks port 465 on some tiers.');
+    } else if (preset === 'gmail') {
+      setSettings((prev) => ({
+        ...prev,
+        email_provider: 'smtp',
         smtp_host: 'smtp.gmail.com',
         smtp_port: 587,
         smtp_secure: false,
         smtp_from: prev.smtp_from || `"Driver Portal" <${prev.smtp_user || 'your-email@gmail.com'}>`,
       }));
-      showToast('info', 'Gmail Preset Applied', 'Use your full Gmail address and a 16-character Google App Password.');
+      showToast('info', 'Gmail TLS Preset Applied', 'Configured for Gmail TLS (Port 587). Note: Render blocks port 587 on some tiers.');
     } else if (preset === 'outlook') {
       setSettings((prev) => ({
         ...prev,
+        email_provider: 'smtp',
         smtp_host: 'smtp.office365.com',
         smtp_port: 587,
         smtp_secure: false,
@@ -93,20 +129,13 @@ export const AdminSettings: React.FC = () => {
     } else if (preset === 'sendgrid') {
       setSettings((prev) => ({
         ...prev,
+        email_provider: 'smtp',
         smtp_host: 'smtp.sendgrid.net',
-        smtp_port: 587,
+        smtp_port: 2525,
         smtp_secure: false,
         smtp_user: 'apikey',
       }));
-      showToast('info', 'SendGrid Preset Applied', 'Use "apikey" as username and your SendGrid API key as password.');
-    } else if (preset === 'brevo') {
-      setSettings((prev) => ({
-        ...prev,
-        smtp_host: 'smtp-relay.brevo.com',
-        smtp_port: 587,
-        smtp_secure: false,
-      }));
-      showToast('info', 'Brevo Preset Applied', 'Configured for Brevo (Sendinblue) SMTP.');
+      showToast('info', 'SendGrid Port 2525 Applied', 'Configured for SendGrid on Render-friendly port 2525.');
     }
   };
 
@@ -263,150 +292,189 @@ export const AdminSettings: React.FC = () => {
           </div>
         </div>
 
-        {/* Section 2: Real SMTP Email Server Configuration */}
+        {/* Section 2: Email Delivery Configuration (API & SMTP) */}
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
             <div className="flex items-center gap-2 text-slate-200 font-bold text-sm">
-              <Server className="w-4 h-4 text-emerald-400" /> Real SMTP Email Server Settings (Nodemailer)
+              <Server className="w-4 h-4 text-emerald-400" /> Live Email Delivery Settings (Resend API &amp; SMTP)
             </div>
             <div className="flex items-center gap-2">
-              {settings.smtp_host && settings.smtp_user ? (
+              {((settings.email_provider === 'resend' || settings.email_provider === 'brevo_api') && settings.email_api_key) ||
+              (settings.smtp_host && settings.smtp_user) ? (
                 <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">
-                  <CheckCircle2 className="w-3 h-3" /> SMTP Configured
+                  <CheckCircle2 className="w-3 h-3" /> Email Configured
                 </span>
               ) : (
                 <span className="flex items-center gap-1 text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2.5 py-0.5 rounded-full">
-                  <AlertTriangle className="w-3 h-3" /> SMTP Credentials Needed for Real Inbox Delivery
+                  <AlertTriangle className="w-3 h-3" /> Setup Needed for Inbox Delivery
                 </span>
               )}
+            </div>
+          </div>
+
+          {/* Render Cloud Port Notice Banner */}
+          <div className="bg-amber-950/40 border border-amber-500/30 rounded-2xl p-3.5 text-xs text-amber-200/90 leading-relaxed flex items-start gap-2.5">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <strong className="text-amber-300">Why does Gmail SMTP show "Connection timeout" on Render?</strong>
+              <p className="text-slate-300 mt-1">
+                Render and cloud containers automatically block standard SMTP ports <strong>(25, 465, 587)</strong> to prevent spam. 
+                For guaranteed instant delivery on Render, use <strong>Resend API</strong> (HTTPS Port 443 — 100% allowed) or <strong>Brevo Port 2525</strong>.
+              </p>
             </div>
           </div>
 
           {/* Quick Presets */}
           <div>
             <label className="text-slate-400 text-[11px] font-medium block mb-2">
-              Auto-Fill Provider Configuration Preset:
+              Choose Email Delivery Method / Preset:
             </label>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => handlePresetSelect('gmail')}
-                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-slate-200 font-medium transition-colors cursor-pointer"
+                onClick={() => handlePresetSelect('resend')}
+                className={`px-3.5 py-2 rounded-xl font-medium transition-colors cursor-pointer text-xs flex items-center gap-1.5 ${
+                  settings.email_provider === 'resend'
+                    ? 'bg-emerald-500 text-slate-950 font-bold shadow-lg shadow-emerald-500/20'
+                    : 'bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-500/40 text-emerald-300'
+                }`}
               >
-                Gmail (smtp.gmail.com)
+                <span>⭐ Resend API (Recommended for Render)</span>
               </button>
+
               <button
                 type="button"
-                onClick={() => handlePresetSelect('outlook')}
-                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-slate-200 font-medium transition-colors cursor-pointer"
+                onClick={() => handlePresetSelect('brevo-port2525')}
+                className={`px-3 py-1.5 rounded-xl font-medium transition-colors cursor-pointer text-xs ${
+                  settings.smtp_port === 2525
+                    ? 'bg-indigo-600 text-white font-bold'
+                    : 'bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200'
+                }`}
               >
-                Outlook / Office 365
+                Brevo (Port 2525)
               </button>
+
+              <button
+                type="button"
+                onClick={() => handlePresetSelect('gmail-ssl')}
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-slate-200 font-medium transition-colors cursor-pointer text-xs"
+              >
+                Gmail SSL (Port 465)
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handlePresetSelect('gmail')}
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-slate-200 font-medium transition-colors cursor-pointer text-xs"
+              >
+                Gmail TLS (Port 587)
+              </button>
+
               <button
                 type="button"
                 onClick={() => handlePresetSelect('sendgrid')}
-                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-slate-200 font-medium transition-colors cursor-pointer"
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-slate-200 font-medium transition-colors cursor-pointer text-xs"
               >
-                SendGrid
-              </button>
-              <button
-                type="button"
-                onClick={() => handlePresetSelect('brevo')}
-                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-slate-200 font-medium transition-colors cursor-pointer"
-              >
-                Brevo (Sendinblue)
+                SendGrid (Port 2525)
               </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="sm:col-span-2">
-              <label className="text-slate-300 font-medium block mb-1">SMTP Server Host</label>
+          {/* Conditional Form: Resend / HTTP API */}
+          {settings.email_provider === 'resend' && (
+            <div className="bg-slate-950 border border-emerald-500/30 rounded-2xl p-4.5 space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-slate-200 font-bold text-xs flex items-center gap-1.5">
+                  <Key className="w-3.5 h-3.5 text-emerald-400" /> Resend API Key (<code className="text-emerald-400">re_...</code>)
+                </label>
+                <a
+                  href="https://resend.com/signup"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-emerald-400 underline font-semibold hover:text-emerald-300"
+                >
+                  Get Free API Key (3,000 emails/mo) &rarr;
+                </a>
+              </div>
               <input
-                type="text"
-                value={settings.smtp_host || ''}
-                onChange={(e) => setSettings({ ...settings, smtp_host: e.target.value })}
-                placeholder="e.g. smtp.gmail.com or mail.yourcompany.com"
-                className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-600 font-mono transition-colors"
+                type="password"
+                value={settings.email_api_key || ''}
+                onChange={(e) => setSettings({ ...settings, email_api_key: e.target.value })}
+                placeholder="re_123456789_abcdefg..."
+                className="w-full bg-slate-900 border border-slate-700 focus:border-emerald-500 rounded-xl px-3.5 py-2.5 text-slate-100 font-mono transition-colors text-xs"
               />
+              <p className="text-[11px] text-slate-400">
+                Resend sends emails directly over HTTPS (Port 443), which is completely unblocked by Render, AWS, and all cloud hosts.
+              </p>
             </div>
+          )}
 
-            <div>
-              <label className="text-slate-300 font-medium block mb-1">Port</label>
-              <input
-                type="number"
-                value={settings.smtp_port || 587}
-                onChange={(e) => setSettings({ ...settings, smtp_port: Number(e.target.value) })}
-                placeholder="587 or 465"
-                className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-xl px-3.5 py-2.5 text-slate-100 font-mono transition-colors"
-              />
-            </div>
-          </div>
+          {/* Standard SMTP Fields (Shown when using SMTP) */}
+          {settings.email_provider !== 'resend' && settings.email_provider !== 'brevo_api' && (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="sm:col-span-2">
+                  <label className="text-slate-300 font-medium block mb-1">SMTP Server Host</label>
+                  <input
+                    type="text"
+                    value={settings.smtp_host || ''}
+                    onChange={(e) => setSettings({ ...settings, smtp_host: e.target.value })}
+                    placeholder="e.g. smtp-relay.brevo.com or smtp.gmail.com"
+                    className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-600 font-mono transition-colors"
+                  />
+                </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-slate-300 font-medium block mb-1">SMTP Username / Email Address</label>
-              <input
-                type="text"
-                value={settings.smtp_user || ''}
-                onChange={(e) => setSettings({ ...settings, smtp_user: e.target.value })}
-                placeholder="e.g. notifications@yourcompany.com"
-                className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-600 transition-colors"
-              />
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-slate-300 font-medium">SMTP Password / App Password</label>
-                <div className="flex items-center gap-1 text-[10px] text-indigo-400 font-semibold" title="For Gmail, create a 16-character App Password under Google Account Security">
-                  <HelpCircle className="w-3 h-3" />
-                  <span>Google App Password Required</span>
+                <div>
+                  <label className="text-slate-300 font-medium block mb-1">Port</label>
+                  <input
+                    type="number"
+                    value={settings.smtp_port || 2525}
+                    onChange={(e) => setSettings({ ...settings, smtp_port: Number(e.target.value) })}
+                    placeholder="2525, 465, or 587"
+                    className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-xl px-3.5 py-2.5 text-slate-100 font-mono transition-colors"
+                  />
                 </div>
               </div>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={settings.smtp_pass || ''}
-                  onChange={(e) => setSettings({ ...settings, smtp_pass: e.target.value })}
-                  placeholder="16-character App Password (e.g. abcd efgh ijkl mnop)"
-                  className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-xl pl-3.5 pr-10 py-2.5 text-slate-100 font-mono transition-colors"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 cursor-pointer"
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-          </div>
 
-          {/* Special Gmail / Google Workspace Setup Instructions */}
-          {settings.smtp_host?.includes('gmail') && (
-            <div className="bg-indigo-950/40 border border-indigo-500/30 rounded-2xl p-4 text-xs space-y-2">
-              <div className="font-bold text-indigo-300 flex items-center gap-2 text-sm">
-                <Lock className="w-4 h-4 text-indigo-400" />
-                How to fix "535 Username and Password not accepted" (Gmail):
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-slate-300 font-medium block mb-1">SMTP Username / Email Address</label>
+                  <input
+                    type="text"
+                    value={settings.smtp_user || ''}
+                    onChange={(e) => setSettings({ ...settings, smtp_user: e.target.value })}
+                    placeholder="e.g. notifications@yourcompany.com"
+                    className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-600 transition-colors"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-slate-300 font-medium">SMTP Password / App Password</label>
+                    <div className="flex items-center gap-1 text-[10px] text-indigo-400 font-semibold">
+                      <HelpCircle className="w-3 h-3" />
+                      <span>App Password / SMTP Key</span>
+                    </div>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={settings.smtp_pass || ''}
+                      onChange={(e) => setSettings({ ...settings, smtp_pass: e.target.value })}
+                      placeholder="Enter password or key"
+                      className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-xl pl-3.5 pr-10 py-2.5 text-slate-100 font-mono transition-colors"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 cursor-pointer"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
               </div>
-              <p className="text-slate-300 leading-relaxed">
-                Google blocks regular Gmail passwords on SMTP for security. You must generate a free 16-character <strong>App Password</strong>:
-              </p>
-              <ol className="list-decimal list-inside space-y-1 text-slate-300 pl-1">
-                <li>
-                  Open your <a href="https://myaccount.google.com/security" target="_blank" rel="noreferrer" className="text-indigo-400 underline font-semibold hover:text-indigo-300">Google Account Security Settings</a> and turn on <strong>2-Step Verification</strong>.
-                </li>
-                <li>
-                  Go directly to <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer" className="text-indigo-400 underline font-semibold hover:text-indigo-300">myaccount.google.com/apppasswords</a>.
-                </li>
-                <li>
-                  Enter App name (e.g. <em>"Driver Portal"</em>) &rarr; Click <strong>Create</strong>.
-                </li>
-                <li>
-                  Copy the <strong>16-character password</strong> (e.g. <code className="bg-slate-900 px-1.5 py-0.5 rounded text-amber-300">abcd efgh ijkl mnop</code>) and paste it into the <strong>SMTP Password</strong> field above.
-                </li>
-              </ol>
-            </div>
+            </>
           )}
 
           <div>
@@ -416,7 +484,7 @@ export const AdminSettings: React.FC = () => {
               value={settings.smtp_from || ''}
               onChange={(e) => setSettings({ ...settings, smtp_from: e.target.value })}
               placeholder='"Driver Portal" <no-reply@company.com>'
-              className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-600 transition-colors"
+              className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-600 transition-colors text-xs font-mono"
             />
           </div>
 

@@ -58,7 +58,7 @@ class Database {
       company_name: 'Gujarat Transport & Logistics Corp.',
       app_name: 'Driver Attendance System',
       higher_authority_email: process.env.HIGHER_AUTHORITY_EMAIL || process.env.BOSS_EMAIL || 'jaydeepsinhzala2590@gmail.com',
-      public_app_url: process.env.PUBLIC_APP_URL || 'https://ais-pre-noiybzqy3aovqqay7h6ofz-454228176347.asia-east1.run.app',
+      public_app_url: process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_APP_URL || 'https://ais-pre-noiybzqy3aovqqay7h6ofz-454228176347.asia-east1.run.app',
       location_accuracy_threshold_meters: 50,
       approval_token_expiry_hours: 48,
       timezone: process.env.TIMEZONE || 'Asia/Kolkata',

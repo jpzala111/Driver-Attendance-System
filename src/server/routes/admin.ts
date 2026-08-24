@@ -7,26 +7,30 @@ export const adminRouter = Router();
 
 // Helper to determine accurate public base URL
 function getBaseUrl(req: any): string {
-  const settings = db.getSettings();
-  if (settings.public_app_url && settings.public_app_url.trim().startsWith('http')) {
-    return settings.public_app_url.trim().replace(/\/$/, '');
+  // If Render provides RENDER_EXTERNAL_URL (e.g. https://driver-app.onrender.com)
+  if (process.env.RENDER_EXTERNAL_URL) {
+    return process.env.RENDER_EXTERNAL_URL.replace(/\/$/, '');
   }
 
+  // Check incoming request headers (origin, host, x-forwarded-host)
   const origin = req.get('origin');
   if (origin && !origin.includes('localhost:3000') && origin.startsWith('http')) {
-    // If it's a private developer URL (ais-dev-*), automatically convert to public shared preview (ais-pre-*)
-    // so the boss can open and approve without getting 403 Forbidden!
     return origin.replace('ais-dev-', 'ais-pre-').replace(/\/$/, '');
   }
 
   const host = req.get('x-forwarded-host') || req.get('host');
   const proto = req.get('x-forwarded-proto') || req.protocol || 'https';
-  if (host) {
+  if (host && !host.includes('localhost:3000')) {
     let cleanHost = host;
     if (cleanHost.includes('ais-dev-')) {
       cleanHost = cleanHost.replace('ais-dev-', 'ais-pre-');
     }
     return `${proto}://${cleanHost}`.replace(/\/$/, '');
+  }
+
+  const settings = db.getSettings();
+  if (settings.public_app_url && settings.public_app_url.trim().startsWith('http') && !settings.public_app_url.includes('ais-dev-')) {
+    return settings.public_app_url.trim().replace(/\/$/, '');
   }
 
   return process.env.PUBLIC_APP_URL || process.env.APP_URL || 'https://ais-pre-noiybzqy3aovqqay7h6ofz-454228176347.asia-east1.run.app';

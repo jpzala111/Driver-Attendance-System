@@ -157,7 +157,9 @@ export interface SystemSettings {
   timezone: string;
   odoo_instance_url: string;
   odoo_database: string;
-  // SMTP Email Server Settings
+  // SMTP & API Email Server Settings
+  email_provider?: 'smtp' | 'resend' | 'brevo_api' | 'sendgrid_api';
+  email_api_key?: string;
   smtp_host?: string;
   smtp_port?: number;
   smtp_secure?: boolean;
