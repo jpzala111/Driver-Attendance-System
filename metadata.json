@@ -1,0 +1,6 @@
+{
+  "name": "Driver Attendance System",
+  "description": "Production driver attendance system with mobile driver check-in, GPS verification, odometer OCR, admin management, and Odoo 19 export.",
+  "requestFramePermissions": ["camera", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
