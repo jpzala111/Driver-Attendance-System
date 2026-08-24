@@ -267,7 +267,13 @@ Security Hash: ${request.token_hash}
     // 1. Resend API (HTTPS Port 443 - 100% works on Render without any port block)
     if (provider === 'resend' || apiKey.startsWith('re_')) {
       try {
-        const fromSender = settings.smtp_from || 'Driver Attendance Portal <onboarding@resend.dev>';
+        // Resend requires custom domain verification before sending from @gmail.com or personal domains.
+        // For instant testing without domain setup, use Resend's free testing sender: onboarding@resend.dev
+        let fromSender = 'Driver Attendance Portal <onboarding@resend.dev>';
+        if (settings.smtp_from && !settings.smtp_from.includes('@gmail.com') && !settings.smtp_from.includes('@yahoo.com') && !settings.smtp_from.includes('@outlook.com') && !settings.smtp_from.includes('@hotmail.com')) {
+          fromSender = settings.smtp_from;
+        }
+
         const res = await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: {
@@ -297,13 +303,17 @@ Security Hash: ${request.token_hash}
           approvalUrl,
         };
       } catch (err: any) {
+        let errMessage = err.message || 'Resend error';
+        if (errMessage.includes('domain is not verified')) {
+          errMessage = 'Resend requires using "onboarding@resend.dev" as the sender for unverified domains, and on free accounts you can deliver to your Resend account email (or verify a custom domain on resend.com/domains).';
+        }
         console.error(`[EmailService] Resend API Error:`, err);
         return {
           success: false,
           recipient: to,
           isRealSmtp: true,
           approvalUrl,
-          error: `Resend API Error: ${err.message}`,
+          error: `Resend API Error: ${errMessage}`,
         };
       }
     }
