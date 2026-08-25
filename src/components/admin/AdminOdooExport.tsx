@@ -35,7 +35,7 @@ export const AdminOdooExport: React.FC = () => {
       if (overrideTo) params.append('endDate', overrideTo);
 
       const [valRes, drvRes] = await Promise.all([
-        fetch(`/api/export/odoo19-validate?${params.toString()}`),
+        fetch(`/api/admin/export/odoo19-validate?${params.toString()}`),
         fetch('/api/admin/drivers'),
       ]);
 
@@ -132,7 +132,7 @@ export const AdminOdooExport: React.FC = () => {
     if (toDate) params.append('endDate', toDate);
 
     confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
-    window.location.href = `/api/export/odoo19-csv?${params.toString()}`;
+    window.location.href = `/api/admin/export/odoo19-csv?${params.toString()}`;
     showToast('success', 'Exporting CSV', 'Downloading Odoo 19 hr.attendance import CSV file.');
   };
 
@@ -142,7 +142,7 @@ export const AdminOdooExport: React.FC = () => {
     if (fromDate) params.append('startDate', fromDate);
     if (toDate) params.append('endDate', toDate);
 
-    window.location.href = `/api/export/attendance-csv?${params.toString()}`;
+    window.location.href = `/api/admin/export/attendance-csv?${params.toString()}`;
     showToast('info', 'Exporting Master CSV', 'Downloading full attendance & GPS report.');
   };
 

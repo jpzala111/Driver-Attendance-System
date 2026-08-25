@@ -121,21 +121,27 @@ adminRouter.post('/drivers', async (req, res) => {
       };
     }
 
+    const emailActuallySent = Boolean(emailResult?.success);
+    const message = emailActuallySent
+      ? `Driver request created for ${employee.name}. Approval email dispatched to Boss at ${approval_request.approval_email}. Driver cannot log in until your boss accepts the email request.`
+      : `Driver request created for ${employee.name}, but the approval EMAIL COULD NOT BE SENT (${emailResult?.error || 'no email provider configured'}). Use the approval link below to share it with your boss manually, and check Admin > Settings to fix email delivery.`;
+
     return res.json({
       success: true,
-      message: `Driver request created for ${employee.name}. Approval email dispatched to Boss at ${approval_request.approval_email}. Driver cannot log in until your boss accepts the email request.`,
+      message,
       approval_url: `${baseUrl}/?approve_token=${encodeURIComponent(approval_request.raw_token)}`,
       employee,
+      email_dispatch: {
+        success: emailActuallySent,
+        recipient: emailResult?.recipient,
+        error: emailResult?.error,
+      },
       approval_request: {
         id: approval_request.id,
         employee_id: approval_request.employee_id,
         approval_email: approval_request.approval_email,
         status: approval_request.status,
         expires_at: approval_request.expires_at,
-      },
-      email_dispatch: {
-        success: emailResult?.success,
-        recipient: emailResult?.recipient,
       },
     });
   } catch (err: any) {
@@ -293,9 +299,14 @@ adminRouter.post('/drivers/:id/resend-approval', async (req, res) => {
       };
     }
 
+    const emailActuallySent = Boolean(emailResult?.success);
+    const message = emailActuallySent
+      ? `Approval request resent to Boss at ${approvalReq.approval_email}.`
+      : `Could not send the approval EMAIL (${emailResult?.error || 'no email provider configured'}). Use the approval link to share it with your boss manually, and check Admin > Settings to fix email delivery.`;
+
     return res.json({
       success: true,
-      message: `Approval request resent to Boss at ${approvalReq.approval_email}.`,
+      message,
       approval_url: `${baseUrl}/?approve_token=${encodeURIComponent(approvalReq.raw_token)}`,
       approval_request: {
         id: approvalReq.id,
@@ -305,8 +316,9 @@ adminRouter.post('/drivers/:id/resend-approval', async (req, res) => {
         expires_at: approvalReq.expires_at,
       },
       email_dispatch: {
-        success: emailResult?.success,
+        success: emailActuallySent,
         recipient: emailResult?.recipient,
+        error: emailResult?.error,
       },
     });
   } catch (err: any) {

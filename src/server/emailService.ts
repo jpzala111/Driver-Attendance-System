@@ -367,13 +367,13 @@ Security Hash: ${request.token_hash}
     const transporter = this.getTransporter(settings);
 
     if (!transporter) {
-      console.warn(`[EmailService] No SMTP/API configured. Email prepared for: ${to}`);
+      console.warn(`[EmailService] No SMTP/API configured. Email NOT sent for: ${to}`);
       return {
-        success: true,
+        success: false,
         recipient: to,
         isRealSmtp: false,
         approvalUrl,
-        error: 'No active email provider. Please configure Resend API Key or SMTP credentials in Settings.',
+        error: 'No active email provider configured. Go to Admin > Settings and configure the Resend API Key, Brevo API Key, or SMTP credentials so approval emails can actually be delivered to your Boss.',
       };
     }
 

@@ -58,9 +58,101 @@ export const AdminReports: React.FC = () => {
     { id: 10, name: 'Approval Workflow Log', icon: ShieldCheck, desc: 'Audit log of Higher Authority email activation requests' },
   ];
 
+  // Escapes a value for safe inclusion in a CSV cell
+  const csvEscape = (val: any): string => `"${String(val ?? '').replace(/"/g, '""')}"`;
+
+  // Builds CSV rows for the currently selected report using already-loaded data
+  const buildReportCSV = (): { headers: string[]; rows: string[][] } => {
+    switch (reportType) {
+      case 3: // Driver-wise Performance
+        return {
+          headers: ['Code', 'Driver Name', 'Approval', 'Status', 'Logged Sessions', 'Total Distance (KM)'],
+          rows: drivers.map((d) => [
+            d.employee_code,
+            d.name,
+            d.approval_status,
+            d.account_status,
+            String(d.total_sessions || 0),
+            String(d.total_distance_km || 0),
+          ]),
+        };
+      case 8: // Odometer OCR Quality
+        return {
+          headers: ['Driver', 'Start Method', 'Start Confidence', 'End Method', 'End Confidence', 'Distance (KM)'],
+          rows: attendance.map((a) => [
+            a.employee_name,
+            a.starting_odometer_input_method || '',
+            a.starting_odometer_ocr_confidence ? `${Math.round(a.starting_odometer_ocr_confidence * 100)}%` : 'Manual',
+            a.ending_odometer_input_method || '',
+            a.ending_odometer_ocr_confidence ? `${Math.round(a.ending_odometer_ocr_confidence * 100)}%` : '',
+            String(a.calculated_distance || 0),
+          ]),
+        };
+      case 10: // Approval Workflow Log
+        return {
+          headers: ['Token ID', 'Created Date', 'Higher Authority Email', 'Workflow Status', 'Processed Timestamp'],
+          rows: approvals.map((ap) => [
+            ap.token,
+            new Date(ap.created_at).toLocaleString(),
+            ap.higher_authority_email,
+            ap.status,
+            ap.approved_at || ap.rejected_at || 'Pending',
+          ]),
+        };
+      case 1: // Daily Attendance Report
+        return {
+          headers: ['Date', 'Driver', 'Check-In', 'Check-Out', 'Hours', 'Distance (KM)'],
+          rows: attendance.map((a) => [
+            new Date(a.check_in).toLocaleDateString(),
+            a.employee_name,
+            new Date(a.check_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            a.check_out ? new Date(a.check_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'In Progress',
+            a.worked_duration || '',
+            String(a.calculated_distance ?? ''),
+          ]),
+        };
+      default: // Reports 2, 4, 5, 6, 7, 9 share the general attendance/GPS breakdown table
+        return {
+          headers: ['Driver', 'Employee Code', 'Check-In GPS & Address', 'Check-Out GPS & Address', 'Duration', 'Distance (KM)', 'Status'],
+          rows: attendance.map((a) => [
+            a.employee_name,
+            a.employee_code,
+            a.check_in_location_address || '',
+            a.check_out_location_address || '',
+            a.worked_duration || '',
+            String(a.calculated_distance ?? ''),
+            a.status,
+          ]),
+        };
+    }
+  };
+
   const handleExportReportCSV = () => {
     const active = reportsList.find((r) => r.id === reportType);
-    showToast('info', 'Report Generated', `Exported "${active?.name}" to CSV spreadsheet.`);
+    const { headers, rows } = buildReportCSV();
+
+    if (rows.length === 0) {
+      showToast('error', 'No Data', `There is no data available to export for "${active?.name}".`);
+      return;
+    }
+
+    const csvContent = [headers.map(csvEscape).join(','), ...rows.map((r) => r.map(csvEscape).join(','))].join('\n');
+
+    // Prepend BOM so Excel opens UTF-8 CSVs correctly
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const safeName = (active?.name || 'report').toLowerCase().replace(/[^a-z0-9]+/g, '_');
+    const filename = `${safeName}_${new Date().toISOString().split('T')[0]}.csv`;
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    showToast('success', 'Report Downloaded', `Exported "${active?.name}" to ${filename}.`);
   };
 
   return (

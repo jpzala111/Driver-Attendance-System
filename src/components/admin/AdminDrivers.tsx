@@ -124,7 +124,11 @@ export const AdminDrivers: React.FC = () => {
       const data = await res.json();
       if (res.ok && data.success) {
         confetti({ particleCount: 80, spread: 60, origin: { y: 0.6 } });
-        showToast('success', 'Driver Created', data.message);
+        if (data.email_dispatch && data.email_dispatch.success === false) {
+          showToast('error', 'Driver Created — Email Failed', data.message);
+        } else {
+          showToast('success', 'Driver Created', data.message);
+        }
         setShowCreateModal(false);
         if (data.approval_url && data.employee) {
           setCreatedSuccessModal({
@@ -202,7 +206,11 @@ export const AdminDrivers: React.FC = () => {
       });
       const data = await res.json();
       if (res.ok) {
-        showToast('success', 'Approval Request Dispatched', `Approval email sent to Boss at ${data.approval_request?.approval_email || 'Boss Inbox'} for ${driverName}`);
+        if (data.email_dispatch && data.email_dispatch.success === false) {
+          showToast('error', 'Email Not Sent', data.message || `Could not deliver the approval email for ${driverName}. Use the copy-link option instead.`);
+        } else {
+          showToast('success', 'Approval Request Dispatched', `Approval email sent to Boss at ${data.approval_request?.approval_email || 'Boss Inbox'} for ${driverName}`);
+        }
         fetchDrivers();
       } else {
         showToast('error', 'Error', data.error || 'Failed to resend approval');
